@@ -43,7 +43,6 @@ public class OdJoinUser {
             public String getTableName() {
                 return "dim_user_info";
             }
-
             @Override
             public String getRowKey(JSONObject obj) {
                 return obj.getString("user_id");
@@ -51,13 +50,8 @@ public class OdJoinUser {
         }, 300, TimeUnit.SECONDS);
         joinUserDs.print();
         joinUserDs.map(o->o.toJSONString()).sinkTo(SourceSinkUtils.sinkToKafka("od_join_user"));
-
-
-
-
         env.disableOperatorChaining();
         env.execute();
-
-
     }
+
 }

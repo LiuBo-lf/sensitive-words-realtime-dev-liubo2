@@ -17,9 +17,6 @@ public class CdcSinkToKafka {
         //将数据写入Kafka主题。
         allData.sinkTo(SourceSinkUtils.sinkToKafka("log_topic_flink_online_v1"));
         //启动流处理任务。
-        env.execute("aaaaaaaa");
-
+        env.execute("测");
     }
-
-
 }
