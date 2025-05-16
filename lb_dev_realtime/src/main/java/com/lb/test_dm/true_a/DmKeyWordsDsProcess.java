@@ -23,16 +23,26 @@ import org.apache.flink.util.OutputTag;
 
 import java.util.HashSet;
 
+/**
+ * 处理数据流中的关键词信息
+ */
 public class DmKeyWordsDsProcess {
     @SneakyThrows
     public static void main(String[] args) {
+        // 初始化执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
+        // 启用检查点机制
         env.enableCheckpointing(3000);
+        // 设置状态后端
         env.setStateBackend(new HashMapStateBackend());
+        // 配置检查点存储路径
         env.getCheckpointConfig().setCheckpointStorage("hdfs://cdh01:8020/flink/checkpoints/dws-logs");
+        // 设置Hadoop用户名
         System.setProperty("HADOOP_USER_NAME", "hdfs");
+        // 从Kafka读取数据
         DataStreamSource<String> kafkaRead = SourceSinkUtils.kafkaReadSetWater(env, "topic_log");
+        // 将读取的数据转换为JSONObject
         SingleOutputStreamOperator<JSONObject> jsonDs = kafkaRead.map(new MapFunction<String, JSONObject>() {
             @Override
             public JSONObject map(String value) throws Exception {
@@ -44,8 +54,10 @@ public class DmKeyWordsDsProcess {
                 return null;
             }
         });
+        // 定义一个输出标签，用于标记含有关键词的数据
         OutputTag<JSONObject> haveKeyWord = new OutputTag<JSONObject>("haveKeyWord") {
         };
+        // 处理数据，提取关键词信息
         SingleOutputStreamOperator<JSONObject> withUidDs =
                 jsonDs
                         .process(new ProcessFunction<JSONObject, JSONObject>() {
@@ -53,6 +65,7 @@ public class DmKeyWordsDsProcess {
                             @Override
                             public void processElement(JSONObject obj, ProcessFunction<JSONObject, JSONObject>.Context ctx, Collector<JSONObject> out) throws Exception {
                                 JSONObject newObj = new JSONObject();
+                                // 检查数据是否包含必要的字段
                                 if (
                                         obj.containsKey("common")
                                                 && (!obj.getJSONObject("common").isEmpty())
@@ -62,16 +75,20 @@ public class DmKeyWordsDsProcess {
 
                                     JSONObject common = obj.getJSONObject("common");
                                     JSONObject page = obj.getJSONObject("page");
+                                    // 提取操作系统信息
                                     String os = common.getString("os").split(" ")[0];
                                     newObj.put("os", os);
                                     newObj.put("ts", obj.getString("ts"));
+                                    // 提取用户ID
                                     String uid = ((!common.containsKey("uid")) || (common.getString("uid").isEmpty())) ? "-1" : common.getString("uid");
                                     newObj.put("uid", uid);
+                                    // 移除不需要的字段
                                     common.remove("ar");
                                     common.remove("is_new");
                                     common.remove("sid");
                                     newObj.put("log_common_info", common);
                                     newObj.put("keyword", "");
+                                    // 检查是否包含关键词
                                     if (obj.getJSONObject("page").containsKey("item_type")
                                             && ("keyword").equals(obj.getJSONObject("page").getString("item_type"))) {
                                         String item = page.getString("item");
@@ -82,8 +99,10 @@ public class DmKeyWordsDsProcess {
                                 }
                             }
                         });
+        // 执行侧输出流
 //        withUidDs.print();
 //        SideOutputDataStream<JSONObject> keyWordDs = withUidDs.getSideOutput(haveKeyWord);
+        // 去重处理
         SingleOutputStreamOperator<JSONObject> distinctDs = withUidDs.keyBy(o->o.getString("uid")).process(new KeyedProcessFunction<String,JSONObject, JSONObject>() {
 
             ValueState<HashSet<String>> strState;
@@ -105,9 +124,10 @@ public class DmKeyWordsDsProcess {
                 if (set == null) {
                     set = new HashSet<>();
                 }
-//                String jsonString = JSON.toJSONString(value, SerializerFeature.WriteMapNullValue);
+                // 将JSON对象转换为字符串
                 String jsonString = value.toJSONString();
                 System.err.println("处理数据中" + jsonString);
+                // 检查数据是否已存在
                 if (!set.contains(jsonString)) {
                     System.err.println("添加新数据");
                     set.add(jsonString);
@@ -121,8 +141,9 @@ public class DmKeyWordsDsProcess {
             }
         });
 //distinctDs.print();
-                SingleOutputStreamOperator<JSONObject> win2MinutesPageLogsDs = distinctDs
-                        .keyBy(data -> data.getString("uid"))
+        // 窗口操作，按用户ID分组，每2分钟一个窗口
+        SingleOutputStreamOperator<JSONObject> win2MinutesPageLogsDs = distinctDs
+                .keyBy(data -> data.getString("uid"))
                 .process(new DistinctUserDs())
                 .keyBy(data -> data.getString("uid"))
                 .window(TumblingProcessingTimeWindows.of(Time.minutes(2)))
@@ -130,14 +151,17 @@ public class DmKeyWordsDsProcess {
                 .uid("win 2 minutes page count msg")
                 .name("win 2 minutes page count msg");
 
-                //加权重处理
+        // 加权重处理
         SingleOutputStreamOperator<JSONObject> finalKeyWordDs = win2MinutesPageLogsDs
                 .keyBy(o -> o.getString("uid"))
                 .map(new KeyWordGradeMap());
         finalKeyWordDs.print();
+        // 将处理后的数据写入Kafka
         finalKeyWordDs.map(o->o.toJSONString()).sinkTo(SourceSinkUtils.sinkToKafka("dm_keyword_final"));
 
+        // 禁用算子链
         env.disableOperatorChaining();
+        // 执行任务
         env.execute();
 
     }

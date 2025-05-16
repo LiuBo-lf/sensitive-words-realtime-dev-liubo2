@@ -26,6 +26,7 @@ import org.apache.hadoop.hbase.client.Connection;
 public class DimToHbase {
     @SneakyThrows
     public static void main(String[] args)  {
+        //初始化流执行环境。
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
 //        DataStreamSource<String> dbData = SourceSinkUtils.cdcRead(env, "online_flink_retail", "*");
@@ -44,6 +45,7 @@ public class DimToHbase {
         BroadcastStream<String> broadcastStream = processData.broadcast(dimRuleStateDescriptor);
         //cdc流连接广播流
         KeyedStream<String, String> allData = dbData.keyBy(v -> "aa");
+        //将数据流和广播流连接。
         BroadcastConnectedStream<String, String> connectedStream = allData.connect(broadcastStream);
 
         OutputTag<String> dwdOutputTag = new OutputTag<String>("dwd_table") {
@@ -63,6 +65,7 @@ public class DimToHbase {
                         String after = object.getString("after");
                         //广播变量中没有数据则延迟五秒处理
 
+                        //如果广播变量中没有数据，则延迟五秒处理。
                         if (!broadcastState.immutableEntries().iterator().hasNext()) {
                             long l = ctx.timerService().currentProcessingTime() + 5000;
                             ctx.timerService().registerProcessingTimeTimer(l);
@@ -125,28 +128,35 @@ public class DimToHbase {
         });
 
 
+        //将过滤后的数据流添加到HBase的Sink。
         dimTablesStream.addSink(hbaseSink());
 //        filteredDs.sinkTo(SourceSinkUtils.sinkToKafka("log_topic_flink_online_v1_dwd"));
 
 
+        //禁用操作符链，并执行流处理任务。
         env.disableOperatorChaining();
         env.execute("Print MySQL Snapshot + Binlog111111");
     }
+
+
     public static SinkFunction<Tuple2<String, String>> hbaseSink(){
         RichSinkFunction<Tuple2<String, String>> sinkFunction = new RichSinkFunction<Tuple2<String, String>>() {
             private Connection hbaseConnection;
 
             @Override
             public void open(Configuration parameters) throws Exception {
+                //在 open 方法中初始化 HBase 连接。
                 hbaseConnection = HbaseUtil.getHbaseConnection();
             }
 
             @Override
             public void close() throws Exception {
+                //在 close 方法中关闭 HBase 连接。
                 HbaseUtil.closeHbaseConnection(hbaseConnection);
             }
 
             @Override
+            //在 invoke 方法中处理数据和操作类型，根据操作类型执行相应的 HBase 操作。
             public void invoke(Tuple2<String, String> tp) throws Exception {
                 String data = tp.f0;
                 JSONObject dataJson = JSON.parseObject(data);
@@ -167,4 +177,6 @@ public class DimToHbase {
         };
         return sinkFunction;
     }
+
+
 }

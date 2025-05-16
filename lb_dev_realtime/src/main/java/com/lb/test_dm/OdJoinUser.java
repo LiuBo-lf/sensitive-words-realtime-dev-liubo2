@@ -17,6 +17,7 @@ public class OdJoinUser {
     @SneakyThrows
     public static void main(String[] args) {
 
+        //初始化流处理环境并设置检查点。
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         CheckPointUtils.newSetCk(env, "aaa1");
         //读取dwd层订单明细宽表
@@ -49,15 +50,19 @@ public class OdJoinUser {
                 return obj.getString("user_id");
             }
         }, 300, TimeUnit.SECONDS);
+        //打印关联后的用户数据并将其写入Kafka。
         joinUserDs.print();
         joinUserDs.map(o->o.toJSONString()).sinkTo(SourceSinkUtils.sinkToKafka("od_join_user"));
 
 
 
 
+        //禁用操作符链并启动流处理环境。
         env.disableOperatorChaining();
         env.execute();
 
 
     }
+
+
 }

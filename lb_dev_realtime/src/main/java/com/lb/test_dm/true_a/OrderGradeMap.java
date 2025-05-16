@@ -7,24 +7,32 @@ import java.util.HashMap;
 
 public class OrderGradeMap extends RichMapFunction<JSONObject,JSONObject> {
 
+    // 定义各个因素的重要性比例
     private static final double c1Rate = 0.3;
     private static final double tmRate = 0.2;
     private static final double timeRate = 0.15;
     private static final double priceRate = 0.1;
+
+    // 定义各个因素的权重文件路径
     private static final String c1Path= "D:\\PM\\idea-pm\\sensitive-words-realtime-dev-liubo2\\docs\\txt/c1Weight.txt";
     private static final String pricePath= "D:\\PM\\idea-pm\\sensitive-words-realtime-dev-liubo2\\docs\\txt/priceWeight.txt";
     private static final String timePath= "D:\\PM\\idea-pm\\sensitive-words-realtime-dev-liubo2\\docs\\txt/timeWeight.txt";
     private static final String tmPath= "D:\\PM\\idea-pm\\sensitive-words-realtime-dev-liubo2\\docs\\txt/tmWeight.txt";
+
+    // 定义存储各个因素权重的HashMap
     private static  HashMap<String,JSONObject> c1Map ;
     private static  HashMap<String,JSONObject> tmMap ;
     private static  HashMap<String,JSONObject> timeMap ;
     private static  HashMap<String,JSONObject> priceMap ;
+
+    // 静态代码块，用于初始化权重Map
     static {
-       c1Map = ReadToJson.readFileToJsonMap(c1Path);
-       tmMap = ReadToJson.readFileToJsonMap(tmPath);
-       timeMap = ReadToJson.readFileToJsonMap(timePath);
-       priceMap = ReadToJson.readFileToJsonMap(pricePath);
+        c1Map = ReadToJson.readFileToJsonMap(c1Path);
+        tmMap = ReadToJson.readFileToJsonMap(tmPath);
+        timeMap = ReadToJson.readFileToJsonMap(timePath);
+        priceMap = ReadToJson.readFileToJsonMap(pricePath);
     }
+
 
     @Override
     public JSONObject map(JSONObject value) throws Exception {

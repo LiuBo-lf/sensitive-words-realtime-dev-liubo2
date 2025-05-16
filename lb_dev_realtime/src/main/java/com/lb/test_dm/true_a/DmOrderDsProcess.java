@@ -27,12 +27,16 @@ import java.util.Map;
 public class DmOrderDsProcess {
     @SneakyThrows
     public static void main(String[] args) {
+        //初始化流处理环境并设置检查点。
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         CheckPointUtils.newSetCk(env, "HeightWeightCDC2Kafka1");
+        //从 CDC 源读取用户信息数据流。
         DataStreamSource<String> cdc = SourceSinkUtils.cdcRead(env, "realtime_v1", "user_info_sup_msg");
 //        cdc.print();
         SingleOutputStreamOperator<JSONObject> weightHeightDs = cdc.map(o -> JSON.parseObject(o));
+        //从 Kafka 源读取用户和订单数据流。
         DataStreamSource<String> userAndOdDs = SourceSinkUtils.kafkaRead(env, "od_join_user");
+        //将用户和订单数据流转换为 JSON 对象。
         SingleOutputStreamOperator<JSONObject> mapUserAndOdDs = userAndOdDs.map(o -> JSON.parseObject(o));
 
         //去重
@@ -85,6 +89,7 @@ public class DmOrderDsProcess {
                             }
                         }));
 
+        //将 od_user 和 weightHeight 数据流进行区间连接，合并用户信息和体重高度信息。
         SingleOutputStreamOperator<JSONObject> od_user_weightDs = odUserDs
                 .keyBy(o -> o.getString("user_id"))
                 .intervalJoin(waterWeightHeightDs.keyBy(o -> o.getJSONObject("after").getString("uid")))
@@ -164,15 +169,20 @@ public class DmOrderDsProcess {
                 .reduce((value1, value2) -> value2)
                 .uid("win 2 minutes page count msg")
                 .name("win 2 minutes page count msg");
+        //将最终订单数据流输出到 Kafka。
         OrderFinalDs.print();
         OrderFinalDs.map(o->o.toJSONString()).sinkTo(SourceSinkUtils.sinkToKafka("dm_order_final_v2"));
 
+        //禁用操作符链并启动流处理环境。
         env.disableOperatorChaining();
         env.execute();
 
 
     }
+
+
     public static String getStarSign(LocalDate birthday) {
+        //获取生日的月份和日期。
         int month = birthday.getMonthValue();
         int day = birthday.getDayOfMonth();
 
@@ -191,21 +201,32 @@ public class DmOrderDsProcess {
         zodiacRanges.put("水瓶座", new int[]{1, 20, 2, 18});
         zodiacRanges.put("双鱼座", new int[]{2, 19, 3, 20});
 
+        //遍历Map，根据生日的月份和日期匹配对应的星座。
         for (Map.Entry<String, int[]> entry : zodiacRanges.entrySet()) {
             int[] range = entry.getValue();
             if ((month == range[0] && day >= range[1]) || (month == range[2] && day <= range[3])) {
                 return entry.getKey();
             }
         }
+        //如果没有匹配到任何星座，返回“未知”。
         return "未知";
     }
+
+
     public static Integer getAge(LocalDate date){
 
+        //获取当前日期。
         LocalDate localDate = LocalDate.now();
+        //计算输入日期与当前日期之间的间隔。
         Period between = Period.between(date, localDate);
+        //返回间隔的年数作为年龄。
         return between.getYears();
     }
+
+
+
     public static void getTimeType(JSONObject value , Integer hour) {
+        //根据小时数判断时间段，并将结果存入 JSON 对象中。
         if (hour>=0&&hour<6){
             value.put("time_type", "凌晨");
         }else if (hour>=6&&hour<9){
@@ -216,11 +237,16 @@ public class DmOrderDsProcess {
             value.put("time_type", "中午");
         }else if (hour>=14&&hour<18){
             value.put("time_type", "下午");
+            //继续判断其他时间段。
         }else if (hour>=18&&hour<22){
             value.put("time_type", "晚上");
+            //如果小时数在 18 到 22 之间，将时间段设为“晚上”。
         }else {
+            //如果小时数不在上述任何时间段内，将时间段设为“夜间”。
             value.put("time_type", "夜间");
         }
 
     }
+
+
 }

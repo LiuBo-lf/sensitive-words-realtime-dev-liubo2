@@ -29,15 +29,19 @@ import java.util.Map;
 public class Base6Tag {
     @SneakyThrows
     public static void main(String[] args) {
+        //初始化流执行环境并设置检查点。
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         CheckPointUtils.newSetCk(env, "HeightWeightCDC2Kafka1");
+        //从数据库读取用户信息流。
         DataStreamSource<String> cdc = SourceSinkUtils.cdcRead(env, "online_flink_retail", "user_info_sup_msg");
 //        cdc.print();
         SingleOutputStreamOperator<JSONObject> weightHeightDs = cdc.map(o -> JSON.parseObject(o));
         DataStreamSource<String> userAndOdDs = SourceSinkUtils.kafkaRead(env, "od_join_user");
         DataStreamSource<String> userKeywordDs = SourceSinkUtils.kafkaRead(env, "user_keyword");
 
+        //将用户关键词流转换为 JSON 对象流。
         SingleOutputStreamOperator<JSONObject> userKeyJsonDs = userKeywordDs.map(o -> JSON.parseObject(o));
+        //对用户信息流进行去重处理。
         SingleOutputStreamOperator<JSONObject> distinctDs = userAndOdDs
                 .keyBy(o -> JSON.parseObject(o).getString("user_id"))
                 .process(new KeyedProcessFunction<String, String, JSONObject>() {
@@ -86,6 +90,7 @@ public class Base6Tag {
                                 return element.getLong("ts_ms");
                             }
                         }));
+        //为用户关键词数据流设置水位线。
         SingleOutputStreamOperator<JSONObject> userKeyWaterDs = userKeyJsonDs
                 .assignTimestampsAndWatermarks(WatermarkStrategy
                         .<JSONObject>forBoundedOutOfOrderness(Duration.ofSeconds(10))
@@ -139,6 +144,7 @@ public class Base6Tag {
                         return value;
                     }
                 });
+        //打印处理后的数据流，并将其写入 Kafka。
         baseDs.print();
         baseDs.map(o->o.toJSONString()).sinkTo(SourceSinkUtils.sinkToKafka("base6Tag"));
 //        userKeyWaterDs.print("key==>");
@@ -159,12 +165,16 @@ public class Base6Tag {
 //        join3Ds.print();
 
 
+        //禁用操作符链并执行流处理环境。
         env.disableOperatorChaining();
         env.execute();
 
 
     }
+
+
     public static String getStarSign(LocalDate birthday) {
+        //获取生日的月份和日期。
         int month = birthday.getMonthValue();
         int day = birthday.getDayOfMonth();
 
@@ -183,12 +193,16 @@ public class Base6Tag {
         zodiacRanges.put("水瓶座", new int[]{1, 20, 2, 18});
         zodiacRanges.put("双鱼座", new int[]{2, 19, 3, 20});
 
+        //遍历Map，根据生日的月份和日期匹配对应的星座。
         for (Map.Entry<String, int[]> entry : zodiacRanges.entrySet()) {
             int[] range = entry.getValue();
             if ((month == range[0] && day >= range[1]) || (month == range[2] && day <= range[3])) {
                 return entry.getKey();
             }
         }
+        //如果没有匹配到任何星座，返回“未知”。
         return "未知";
     }
+
+
 }

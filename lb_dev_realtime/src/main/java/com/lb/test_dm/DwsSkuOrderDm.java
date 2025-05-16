@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 public class DwsSkuOrderDm {
     @SneakyThrows
     public static void main(String[] args) {
+        //初始化流执行环境并设置并行度和checkpoint配置。
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
         // 设置 3s 的 checkpoint 间隔
@@ -35,6 +36,7 @@ public class DwsSkuOrderDm {
         env.enableCheckpointing(3000);
         env.setStateBackend(new HashMapStateBackend());
         env.getCheckpointConfig().setCheckpointStorage("hdfs://cdh01:8020/flink/checkpoints/DwsSkuOrder2");
+        //从Kafka读取订单详情数据并进行处理。
         DataStreamSource<String> kafkaRead = SourceSinkUtils.kafkaRead(env, "dwd_trade_order_detail_v1");
 //        kafkaRead.print();
         SingleOutputStreamOperator<JSONObject> process = kafkaRead.process(new ProcessFunction<String, JSONObject>() {
@@ -51,6 +53,7 @@ public class DwsSkuOrderDm {
 
             }
         });
+        //对处理后的数据进行去重处理。
         KeyedStream<JSONObject, String> keyedStream = process.keyBy(o -> o.getString("id"));
 //        kafkaRead.print();
         SingleOutputStreamOperator<JSONObject> distinctDs = keyedStream.process(new KeyedProcessFunction<String, JSONObject, JSONObject>() {
@@ -231,10 +234,13 @@ public class DwsSkuOrderDm {
             }
         }, 60, TimeUnit.SECONDS);
 
+        //打印最终处理结果并将其写入Kafka。
         tm_connect.print();
         tm_connect.map(o->o.toJSONString()).sinkTo(SourceSinkUtils.sinkToKafka("dws_sku_order_detail_v1"));
         env.disableOperatorChaining();
         env.execute();
     }
+
+
 
 }
