@@ -132,12 +132,7 @@ public class DwdTradeOrderDetail {
         jsonDs.print();
         jsonDs.sinkTo(SourceSinkUtils.sinkToKafka("dwd_trade_order_detail_v1"));
         env.execute();
-
-
-
-
 //        env.execute("ljklkjk");
     }
-
 
 }
